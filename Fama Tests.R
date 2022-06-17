@@ -64,7 +64,7 @@ download.file(full_url, temp, quiet = TRUE) ##getting error
 
 ##Reading File
 FF_3_Factors <- read.csv(unz(temp, 
-                             "F-F_Research_Data_Factors_weekly_CSV"))
+                             "F-F_Research_Data_Factors_weekly_CSV.csv"))
 
 FF_3_Factors <- read.csv("F-F_Research_Data_Factors_weekly.csv")
 
@@ -77,6 +77,134 @@ prices <-
                      to = "2022-05-31", 
                      auto.assign = TRUE, warnings = FALSE) %>%
 
+head(FF_3_Factors)
+### A tibble: 6 x 1
+## This file was created using the 201802 Bloomberg database
+##<chr>
+## 1 Missing data is indicated by -99.99
+## 2 <NA>
+## 3 199007
+## 4 199008
+## 5 199009
+## 6 199010
+
+## Should see column with wierdly imported dates
+## can be fixed by skipping certain number of rows containing metadata
+## do this....
+FF_3_Factors <- read.csv(unz(temp, 
+                             "F-F_Research_Data_Factors_weekly_CSV.csv"), 
+                        skip = 6)
+
+FF_3_Factors <- read.csv(("F-F_Research_Data_Factors_weekly.csv"), skip = 6)
+head(FF_3_Factors)
+
+map(FF_3_Factors) ##reveals data has been coerced into character format
+##_______________________________________________________________________________
+## DO EITHER
+## This specifically,
+FF_3_Factors <- read.csv(unz(temp, 
+                             "F-F_Research_Data_Factors_weekly_CSV.csv"), 
+                        skip = 6, 
+                        col_types = cols(
+                        Mkt-RF = col_double(), 
+                        SMB = col_double(), 
+                        HML = col_double(), 
+                        RF = col_double())
+
+head(FF_3_Factors)                         
+
+## OR THIS GENERALLY AT THE BEGINNING,
+FF_3_Factors <- read.csv(unz(temp, 
+                             "F-F_Research_Data_Factors_weekly_CSV.csv"), 
+                        skip = 6) %>%
+rename(date = X1) %>%
+mutate_at(vars(-date), as.numeric)
+
+head(FF_3_Factors)
+##__________________________________________________________________________________
+
+## Moving forward...
+FF_3_Factors <- read.csv(unz(temp, 
+                             "F-F_Research_Data_Factors_weekly_CSV.csv"), 
+                        skip = 6) %>%
+rename(date = X1) %>%
+mutate_at(vars(-date), as.numeric) %>%
+mutate(date = ymd(parse_date_time(date, "%Y%m"))
+
+head(FF_3_Factors)
+
+FF_3_Factors %>%
+select(date) %>%
+mutate(date = lubridate::rollback(date)) %>%
+head(1)
+
+##___________________________________________________________________________________
+## If we want to reset dates to last month, add one first and then start rollback
+FF_3_Factors %>%
+select(date) %>%
+mutate(date = lubridate::rollback(date + months(1))) %>%
+head(1)                  
+##____________________________________________________________________________________
+
+## ONLY FACTOR THAT ALIGNS WITH OUR PORTFOLIO DATA
+## FLTER BY FIRST AND LAST DATE
+## IN PORTFOLIO RETURNS OBJECT
+FF_3_Factors <- read.csv(unz(temp, 
+                             "F-F_Research_Data_Factors_weekly_CSV.csv"), 
+                        skip = 6) %>%
+rename(date = X1) %>%
+mutate_at(vars(-date), as.numeric) %>%
+mutate(date = ymd(parse_date_time(date, "%Y%m") + months(1)))) %>%
+filter(date >=
+       first(portfolio_returns_tq_rebalanced_monthly$date) & date <=
+       last(portfolio_returns_tq_rebalanced_monthly$date))
+
+head(FF_3_Factors, 3)
+
+## MERGE DATA OBJECTS
+## CONVERT FF TO DECIMAL
+## CREATE NEW COLUMN TO HOLD RETURNS ABOVE RISK
+ff_portfolio_returns <- 
+                         portfolio_returns_tq_rebalanced_monthly %>%
+                         left_join(FF_3_Factors, by = "date") %>%
+                         mutate(MKT_RF = FF_3_Factors$'Mkt-Rf'/100,
+                                SMB = FF_3_Factors$SMB/100, 
+                                HML = FF_3_Factors$HML/100, 
+                                RF = FF_3_Factors$RF/100, 
+                                R_excess = round(returns - RF, 4))
+                         
+head(ff_portfolio_returns, 4)
+
+## Running a linear model with 95% confidence interval for model coef
+ff_dplyr_byhand <- 
+                    ff_portfolio_returns %>%
+                         do(model = 
+                            lm(R_excess ~ MKT_RF + SMB + HML, data = .)) %>%
+                         tidy(model, conf.int = T, conf.level = 0.95)
+
+ff_dplyr_byhand %>%
+                         mutate_if(is.numeric, funs(round(., 3))) %>%
+                         select(-statistic)
+
+## Pipe results to ggplot
+ff_dplyr_byhand %>% 
+  mutate_if(is.numeric, funs(round(., 3))) %>%
+  filter(term != "(Intercept)") %>% 
+  ggplot(aes(x = term, y = estimate, shape = term, color = term)) + 
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  labs(title = "FF 3-Factor Coefficients for Our Portfolio",
+       subtitle = "nothing in this post is investment advice",
+       x = "",
+       y = "coefficient",
+       caption = "data source: Fama French website and yahoo! Finance") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5),
+        plot.caption  = element_text(hjust = 0))
+  
+                         
+##Returning to this momentarily
 map(-Ad(get(.))) %>%
   reduce(merge) %>%
   colnames <- (symbols)
